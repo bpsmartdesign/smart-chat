@@ -68,19 +68,21 @@ const storeMessage = (message: Message): void => {
 
   writeMessages(messages);
 };
-const getUserConversations = (userId: string): string[] => {
+const getUserConversations = (userId: string): Message[] => {
   const messages = readMessages();
-  const conversations = new Set<string>();
+  const uniqueConversations = new Map<string, Message>(); // Map to store the most recent conversation per user
 
   messages.forEach((msg) => {
-    if (msg.sender_id === userId) {
-      conversations.add(msg.receiver_id);
-    } else if (msg.receiver_id === userId) {
-      conversations.add(msg.sender_id);
-    }
+    // Determine the other participant in the conversation
+    const otherUserId =
+      msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
+
+    // Always overwrite to keep the most recent message for this user
+    uniqueConversations.set(otherUserId, msg);
   });
 
-  return Array.from(conversations);
+  // Return the values from the map, which will be the most recent messages per unique conversation
+  return Array.from(uniqueConversations.values());
 };
 
 // Serve static files (HTML/Client-side JS)
@@ -89,16 +91,17 @@ app.use(express.static(path.join(__dirname, "../public")));
 // Socket.io connection handler
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
-
-  // Listen for a user joining a chat
   socket.on("join_chat", ({ sender_id, receiver_id }) => {
     console.log(`${sender_id} joined chat with ${receiver_id}`);
 
     // Send chat history between these two users
     const conversation = getConversation(sender_id, receiver_id);
     socket.emit("chat_history", conversation);
-  });
-  // Handle message sending
+  }); // Listen for a user joining a chat
+  socket.on("get_conversations", (user_id: string) => {
+    const conversationList = getUserConversations(user_id);
+    socket.emit("conversation_list", conversationList);
+  }); // Retrieve user conversation
   socket.on("send_message", ({ sender_id, receiver_id, message }) => {
     const newMessage: Message = {
       id: uuidv4(),
@@ -113,12 +116,12 @@ io.on("connection", (socket) => {
 
     // Emit the message to both sender and receiver
     io.emit("receive_message", newMessage);
-  });
-  // Handle typing indicator
+  }); // Handle message sending
   socket.on("typing", ({ sender_id, receiver_id, is_typing }) => {
     // Notify the receiver that the sender is typing
     io.emit("user_typing", { sender_id, receiver_id, is_typing });
-  });
+  }); // Handle typing indicator
+
   socket.on("disconnect", () => {
     console.log("A user disconnected:", socket.id);
   });
