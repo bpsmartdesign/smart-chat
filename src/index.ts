@@ -128,6 +128,10 @@ io.on("connection", (socket) => {
 });
 
 // Start the server
+app.get('/home', (req, res) => {
+  res.status(200).json('Welcome, your app is working well');
+})
+
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
