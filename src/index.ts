@@ -70,9 +70,15 @@ const storeMessage = (message: Message): void => {
 };
 const getUserConversations = (userId: string): Message[] => {
   const messages = readMessages();
+
+  // Filter messages where the user is involved as either sender or receiver
+  const userMessages = messages.filter(
+    (msg) => msg.sender_id === userId || msg.receiver_id === userId
+  );
+
   const uniqueConversations = new Map<string, Message>(); // Map to store the most recent conversation per user
 
-  messages.forEach((msg) => {
+  userMessages.forEach((msg) => {
     // Determine the other participant in the conversation
     const otherUserId =
       msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
@@ -128,9 +134,9 @@ io.on("connection", (socket) => {
 });
 
 // Start the server
-app.get('/home', (req, res) => {
-  res.status(200).json('Welcome, your app is working well');
-})
+app.get("/home", (req, res) => {
+  res.status(200).json("Welcome, your app is working well");
+});
 
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
