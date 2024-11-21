@@ -4,110 +4,37 @@ import fs from "fs";
 import path from "path";
 import { Server as SocketIOServer } from "socket.io";
 import { createServer } from "http";
+import { Message, Notification } from "./types.d";
+import {
+  DB_FILE,
+  getConversation,
+  getUserConversations,
+  storeMessage,
+} from "./utils/chatUtil";
+import {
+  getUserNotifications,
+  storeNotification,
+} from "./utils/notificationUtil";
 
-// TypeScript Interface for Message
-interface Message {
-  id: string;
-  sender_id: string;
-  receiver_id: string;
-  message: string;
-  date: string;
-}
-
-// Initialize Express and create an HTTP server
 const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server);
 
 const PORT = 3000;
-const DB_FILE = path.join(__dirname, "../db/cpx_chat.json");
 
-// Initialize the "DB" (JSON file) if it doesn't exist
-if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify([]));
-}
+if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify([]));
 
-// Utility functions to interact with the JSON "database"
-const readMessages = (): Message[] => {
-  const data = fs.readFileSync(DB_FILE, "utf-8");
-  return JSON.parse(data);
-};
-const writeMessages = (messages: Message[]): void => {
-  fs.writeFileSync(DB_FILE, JSON.stringify(messages, null, 2));
-};
-const getConversation = (sender_id: string, receiver_id: string): Message[] => {
-  const messages = readMessages();
-  return messages
-    .filter(
-      (msg) =>
-        (msg.sender_id === sender_id && msg.receiver_id === receiver_id) ||
-        (msg.sender_id === receiver_id && msg.receiver_id === sender_id)
-    )
-    .slice(-50); // Limit to last 50 messages
-};
-const storeMessage = (message: Message): void => {
-  let messages = readMessages();
-  messages.push(message);
-
-  // Keep the last 50 messages between sender and receiver
-  const filteredMessages = messages.filter(
-    (msg) =>
-      (msg.sender_id === message.sender_id &&
-        msg.receiver_id === message.receiver_id) ||
-      (msg.sender_id === message.receiver_id &&
-        msg.receiver_id === message.sender_id)
-  );
-
-  if (filteredMessages.length > 50) {
-    messages = messages.filter(
-      (msg) =>
-        !filteredMessages.includes(msg) ||
-        filteredMessages.indexOf(msg) >= filteredMessages.length - 50
-    );
-  }
-
-  writeMessages(messages);
-};
-const getUserConversations = (userId: string): Message[] => {
-  const messages = readMessages();
-
-  // Filter messages where the user is involved as either sender or receiver
-  const userMessages = messages.filter(
-    (msg) => msg.sender_id === userId || msg.receiver_id === userId
-  );
-
-  const uniqueConversations = new Map<string, Message>(); // Map to store the most recent conversation per user
-
-  userMessages.forEach((msg) => {
-    // Determine the other participant in the conversation
-    const otherUserId =
-      msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
-
-    // Always overwrite to keep the most recent message for this user
-    uniqueConversations.set(otherUserId, msg);
-  });
-
-  // Return the values from the map, which will be the most recent messages per unique conversation
-  return Array.from(uniqueConversations.values());
-};
-
-// Serve static files (HTML/Client-side JS)
 app.use(express.static(path.join(__dirname, "../public")));
-
-// Socket.io connection handler
 io.on("connection", (socket) => {
-  console.log("A user connected:", socket.id);
+  // #region chat
   socket.on("join_chat", ({ sender_id, receiver_id }) => {
-    console.log(`${sender_id} joined chat with ${receiver_id}`);
-
-    // Send chat history between these two users
     const conversation = getConversation(sender_id, receiver_id);
     socket.emit("chat_history", conversation);
-  }); // Listen for a user joining a chat
+  });
   socket.on("get_conversations", (user_id: string) => {
     const conversationList = getUserConversations(user_id);
     socket.emit("conversation_list", conversationList);
-  }); // Retrieve user conversation
+  });
   socket.on("send_message", ({ sender_id, receiver_id, message }) => {
     const newMessage: Message = {
       id: uuidv4(),
@@ -117,16 +44,33 @@ io.on("connection", (socket) => {
       date: new Date().toISOString(),
     };
 
-    // Store the message in the JSON "database"
     storeMessage(newMessage);
-
-    // Emit the message to both sender and receiver
     io.emit("receive_message", newMessage);
-  }); // Handle message sending
+  });
   socket.on("typing", ({ sender_id, receiver_id, is_typing }) => {
-    // Notify the receiver that the sender is typing
     io.emit("user_typing", { sender_id, receiver_id, is_typing });
-  }); // Handle typing indicator
+  });
+  //#endregion
+
+  // #region notification
+  socket.on("get_notifications", (user_id: string) => {
+    const notificationList = getUserNotifications(user_id);
+    socket.emit("notification_list", notificationList);
+  });
+  socket.on("send_notification", ({ title, target_user_id, txt }) => {
+    const newNotification: Notification = {
+      id: uuidv4(),
+      target: "new_msg",
+      target_user_id,
+      title,
+      txt,
+      date: new Date().toISOString(),
+    };
+
+    storeNotification(newNotification);
+    io.emit("receive_notification", newNotification);
+  });
+  //#endregion
 
   socket.on("disconnect", () => {
     console.log("A user disconnected:", socket.id);
