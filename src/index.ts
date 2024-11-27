@@ -6,12 +6,13 @@ import { Server as SocketIOServer } from "socket.io";
 import { createServer } from "http";
 import { Message, Notification } from "./types.d";
 import {
-  DB_FILE,
+  CHAT_DB,
   getConversation,
   getUserConversations,
   storeMessage,
 } from "./utils/chatUtil";
 import {
+  NOTIF_DB,
   getUserNotifications,
   storeNotification,
 } from "./utils/notificationUtil";
@@ -22,10 +23,12 @@ const io = new SocketIOServer(server);
 
 const PORT = 3000;
 
-if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify([]));
+if (!fs.existsSync(CHAT_DB)) fs.writeFileSync(CHAT_DB, JSON.stringify([]));
+if (!fs.existsSync(NOTIF_DB)) fs.writeFileSync(NOTIF_DB, JSON.stringify([]));
 
 app.use(express.static(path.join(__dirname, "../public")));
 io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
   // #region chat
   socket.on("join_chat", ({ sender_id, receiver_id }) => {
     const conversation = getConversation(sender_id, receiver_id);
@@ -53,8 +56,11 @@ io.on("connection", (socket) => {
   //#endregion
 
   // #region notification
+  socket.on("register_user", (userId: string) => {
+    console.log(`Registering user to room: ${userId}`);
+    socket.join(userId);
+  });
   socket.on("get_notifications", (user_id: string) => {
-    console.log('test')
     const notificationList = getUserNotifications(user_id);
     socket.emit("notification_list", notificationList);
   });
@@ -69,7 +75,7 @@ io.on("connection", (socket) => {
     };
 
     storeNotification(newNotification);
-    io.emit("receive_notification", newNotification);
+    io.to(target_user_id).emit("receive_notification", newNotification);
   });
   //#endregion
 
@@ -82,7 +88,6 @@ io.on("connection", (socket) => {
 app.get("/home", (req, res) => {
   res.status(200).json("Welcome, your app is working well");
 });
-
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
