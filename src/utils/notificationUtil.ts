@@ -2,13 +2,13 @@ import fs from "fs";
 import path from "path";
 import { Notification } from "../types";
 
-export const DB_FILE = path.join(__dirname, "./../../db/cpx_notification.json");
+export const NOTIF_DB = path.join(__dirname, "./../../db/cpx_notification.json");
 export const readNotifications = (): Notification[] => {
-  const data = fs.readFileSync(DB_FILE, "utf-8");
+  const data = fs.readFileSync(NOTIF_DB, "utf-8");
   return JSON.parse(data);
 };
 export const writeNotifications = (Notifications: Notification[]): void => {
-  fs.writeFileSync(DB_FILE, JSON.stringify(Notifications, null, 2));
+  fs.writeFileSync(NOTIF_DB, JSON.stringify(Notifications, null, 2));
 };
 export const storeNotification = (notif: Notification): void => {
   let notifications = readNotifications();
