@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { Notification } from "../types";
 
-export const DB_FILE = path.join(__dirname, "../db/cpx_notification.json");
+export const DB_FILE = path.join(__dirname, "./../../db/cpx_notification.json");
 export const readNotifications = (): Notification[] => {
   const data = fs.readFileSync(DB_FILE, "utf-8");
   return JSON.parse(data);
@@ -31,5 +31,6 @@ export const storeNotification = (notif: Notification): void => {
 };
 export const getUserNotifications = (userId: string): Notification[] => {
   const notifications = readNotifications();
+  console.log("getting user notifications ...", notifications);
   return notifications.filter((notif) => notif.target_user_id === userId);
 };

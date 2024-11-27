@@ -54,6 +54,7 @@ io.on("connection", (socket) => {
 
   // #region notification
   socket.on("get_notifications", (user_id: string) => {
+    console.log('test')
     const notificationList = getUserNotifications(user_id);
     socket.emit("notification_list", notificationList);
   });

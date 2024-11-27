@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { Message } from "../types";
 
-export const DB_FILE = path.join(__dirname, "../db/cpx_chat.json");
+export const DB_FILE = path.join(__dirname, "./../../db/cpx_chat.json");
 export const readMessages = (): Message[] => {
   const data = fs.readFileSync(DB_FILE, "utf-8");
   return JSON.parse(data);
