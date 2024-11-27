@@ -2,13 +2,13 @@ import fs from "fs";
 import path from "path";
 import { Message } from "../types";
 
-export const DB_FILE = path.join(__dirname, "./../../db/cpx_chat.json");
+export const CHAT_DB = path.join(__dirname, "./../../db/cpx_chat.json");
 export const readMessages = (): Message[] => {
-  const data = fs.readFileSync(DB_FILE, "utf-8");
+  const data = fs.readFileSync(CHAT_DB, "utf-8");
   return JSON.parse(data);
 };
 export const writeMessages = (messages: Message[]): void => {
-  fs.writeFileSync(DB_FILE, JSON.stringify(messages, null, 2));
+  fs.writeFileSync(CHAT_DB, JSON.stringify(messages, null, 2));
 };
 export const getConversation = (
   sender_id: string,
