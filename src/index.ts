@@ -38,18 +38,22 @@ io.on("connection", (socket) => {
     const conversationList = getUserConversations(user_id);
     socket.emit("conversation_list", conversationList);
   });
-  socket.on("send_message", ({ sender_id, receiver_id, message }) => {
-    const newMessage: Message = {
-      id: uuidv4(),
-      sender_id,
-      receiver_id,
-      message,
-      date: new Date().toISOString(),
-    };
+  socket.on(
+    "send_message",
+    ({ sender_id, receiver_id, message, traveling_date }) => {
+      const newMessage: Message = {
+        id: uuidv4(),
+        sender_id,
+        receiver_id,
+        message,
+        date: new Date().toISOString(),
+        traveling_date,
+      };
 
-    storeMessage(newMessage);
-    io.emit("receive_message", newMessage);
-  });
+      storeMessage(newMessage);
+      io.emit("receive_message", newMessage);
+    }
+  );
   socket.on("typing", ({ sender_id, receiver_id, is_typing }) => {
     io.emit("user_typing", { sender_id, receiver_id, is_typing });
   });

@@ -4,6 +4,7 @@ export interface Message {
   receiver_id: string;
   message: string;
   date: string;
+  traveling_date?: string;
 }
 export interface Notification {
   id: string;
