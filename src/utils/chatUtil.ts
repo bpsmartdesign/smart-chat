@@ -51,12 +51,25 @@ export const getUserConversations = (userId: string): Message[] => {
   const userMessages = messages.filter(
     (msg) => msg.sender_id === userId || msg.receiver_id === userId
   );
+
+  const currentDate = new Date();
+  const sixHoursLater = new Date(currentDate.getTime() + 6 * 60 * 60 * 1000); // Current time + 6 hours
+
   const uniqueConversations = new Map<string, Message>();
 
   userMessages.forEach((msg) => {
     const otherUserId =
       msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
-    uniqueConversations.set(otherUserId, msg);
+
+    // Parse message date or traveling_date if available
+    const messageDate = msg.traveling_date
+      ? new Date(msg.traveling_date)
+      : new Date(msg.date);
+
+    // Filter messages where the date or traveling_date is before current time + 6 hours
+    if (messageDate <= sixHoursLater) {
+      uniqueConversations.set(otherUserId, msg);
+    }
   });
 
   return Array.from(uniqueConversations.values());
