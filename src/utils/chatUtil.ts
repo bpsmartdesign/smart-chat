@@ -1,5 +1,13 @@
 import db from "../db";
 
+/**
+ * Reads all messages from the database, ordered by date in descending order.
+ *
+ * @author BIYA Paul <bpsmartdesign@hotmail.com>
+ *
+ * @returns {any[]} An array of messages.
+ * @throws {Error} If there is an issue reading messages from the database.
+ */
 export const readMessages = (): any[] => {
   try {
     const stmt = db.prepare("SELECT * FROM messages ORDER BY date DESC");
@@ -9,6 +17,20 @@ export const readMessages = (): any[] => {
   }
 };
 
+/**
+ * Writes a message to the database.
+ *
+ * @author BIYA Paul <bpsmartdesign@hotmail.com>
+ *
+ * @param {Object} params - The parameters for writing a message.
+ * @param {string} params.sender_id - The ID of the sender.
+ * @param {string} params.receiver_id - The ID of the receiver.
+ * @param {string} params.message - The message content.
+ * @param {string} [params.traveling_date] - The optional traveling date of the message
+ *
+ * @throws {Error} If sender or receiver ID is missing, if sender and receiver are the same,
+ *                 if the message exceeds the maximum length, or if there is an issue writing the message to the database.
+ */
 export const writeMessage = ({
   sender_id,
   receiver_id,
@@ -46,6 +68,17 @@ export const writeMessage = ({
   }
 };
 
+/**
+ * Retrieves the conversation between two users.
+ *
+ * @author BIYA Paul <bpsmartdesign@hotmail.com>
+ *
+ * @param {string} sender_id - The ID of the sender.
+ * @param {string} receiver_id - The ID of the receiver.
+ *
+ * @returns {any[]} An array of messages in the conversation.
+ * @throws {Error} If there is an issue retrieving the conversation from the database.
+ */
 export const getConversation = (
   sender_id: string,
   receiver_id: string
@@ -66,6 +99,16 @@ export const getConversation = (
   }
 };
 
+/**
+ * Retrieves all conversations for a given user, ordered by the date of the last message in each conversation.
+ *
+ * @author BIYA Paul <bpsmartdesign@hotmail.com>
+ *
+ * @param {string} userId - The ID of the user.
+ *
+ * @returns {any[]} An array of conversations, each containing the conversation ID, the date of the last message, and the last message content.
+ * @throws {Error} If the user ID is missing or if there is an issue retrieving the conversations from the database.
+ */
 export const getUserConversations = (userId: string): any[] => {
   if (!userId) throw new Error("User ID is required.");
   try {
