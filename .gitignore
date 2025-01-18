@@ -76,6 +76,7 @@ yarn-error.log
 .env
 .env.*
 
-db
-dist
+/db
+/db/*
+/dist
 pnpm-lock.yaml
