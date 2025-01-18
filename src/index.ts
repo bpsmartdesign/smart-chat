@@ -1,15 +1,11 @@
 import express from "express";
-import { v4 as uuidv4 } from "uuid";
-import fs from "fs";
-import path from "path";
-import { Server as SocketIOServer } from "socket.io";
 import { createServer } from "http";
-import { Message, Notification } from "./types.d";
+import { Server as SocketIOServer } from "socket.io";
+import { v4 as uuidv4 } from "uuid";
 import {
-  CHAT_DB,
+  writeMessage,
   getConversation,
   getUserConversations,
-  storeMessage,
 } from "./utils/chatUtil";
 
 const app = express();
@@ -18,50 +14,90 @@ const io = new SocketIOServer(server);
 
 const PORT = 3000;
 
-if (!fs.existsSync(CHAT_DB)) fs.writeFileSync(CHAT_DB, JSON.stringify([]));
+app.use(express.static("public"));
 
-app.use(express.static(path.join(__dirname, "../public")));
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
-  // #region chat
+  /**
+   * 1. Rejoindre une conversation
+   */
   socket.on("join_chat", ({ sender_id, receiver_id }) => {
-    const conversation = getConversation(sender_id, receiver_id);
-    socket.emit("chat_history", conversation);
+    try {
+      const conversation_id = [sender_id, receiver_id].sort().join("-");
+      socket.join(conversation_id);
+      const conversation = getConversation(sender_id, receiver_id);
+      socket.emit("chat_history", conversation);
+    } catch (error) {
+      console.error("Error in join_chat:", error);
+      socket.emit("error", { message: "Failed to join chat." });
+    }
   });
-  socket.on("get_conversations", (user_id: string) => {
-    const conversationList = getUserConversations(user_id);
-    socket.emit("conversation_list", conversationList);
+
+  /**
+   * 2. Récupérer les conversations d’un utilisateur
+   */
+  socket.on("get_conversations", (user_id) => {
+    try {
+      const conversations = getUserConversations(user_id);
+      socket.emit("conversation_list", conversations);
+    } catch (error) {
+      console.error("Error in get_conversations:", error);
+      socket.emit("error", { message: "Failed to get conversations." });
+    }
   });
+
+  /**
+   * 3. Envoyer un message
+   */
   socket.on(
     "send_message",
     ({ sender_id, receiver_id, message, traveling_date }) => {
-      const newMessage: Message = {
-        id: uuidv4(),
-        sender_id,
-        receiver_id,
-        message,
-        date: new Date().toISOString(),
-        traveling_date,
-      };
+      try {
+        const conversation_id = [sender_id, receiver_id].sort().join("-");
+        const newMessage = {
+          sender_id,
+          receiver_id,
+          message,
+          traveling_date,
+        };
 
-      storeMessage(newMessage);
-      io.emit("receive_message", newMessage);
+        // Enregistrer le message dans la base
+        writeMessage(newMessage);
+        // Envoyer le message uniquement aux utilisateurs dans la room
+        io.to(conversation_id).emit("receive_message", newMessage);
+      } catch (error) {
+        console.error("Error in send_message:", error);
+        socket.emit("error", { message: "Failed to send message." });
+      }
     }
   );
+
+  /**
+   * 4. Indicateur "typing"
+   */
   socket.on("typing", ({ sender_id, receiver_id, is_typing }) => {
-    io.emit("user_typing", { sender_id, receiver_id, is_typing });
-  });
-  //#endregion
+    try {
+      const conversation_id = [sender_id, receiver_id].sort().join("-");
 
+      socket.to(conversation_id).emit("user_typing", {
+        sender_id,
+        receiver_id,
+        is_typing,
+      });
+    } catch (error) {
+      console.error("Error in typing:", error);
+      socket.emit("error", { message: "Failed to notify typing status." });
+    }
+  });
+
+  /**
+   * 5. Déconnexion d’un utilisateur
+   */
   socket.on("disconnect", () => {
-    console.log("A user disconnected:", socket.id);
+    console.log(`User disconnected: ${socket.id}`);
   });
 });
 
-// Start the server
-app.get("/home", (req, res) => {
-  res.status(200).json("Welcome, your app is working well");
-});
+// Démarrer le serveur
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
