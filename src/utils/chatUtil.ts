@@ -5,10 +5,10 @@ export const readMessages = (): any[] => {
     const stmt = db.prepare("SELECT * FROM messages ORDER BY date DESC");
     return stmt.all();
   } catch (error) {
-    console.error("Error reading messages:", error);
-    return []; // Retourne un tableau vide en cas d'erreur
+    throw new Error("Failed to read messages.");
   }
 };
+
 export const writeMessage = ({
   sender_id,
   receiver_id,
@@ -20,9 +20,15 @@ export const writeMessage = ({
   message: string;
   traveling_date?: string;
 }): void => {
+  if (!sender_id || !receiver_id)
+    throw new Error("Sender or receiver ID is missing.");
+  if (sender_id === receiver_id)
+    throw new Error("Sender and receiver cannot be the same.");
+  if (message.length > 1000)
+    throw new Error("Message exceeds the maximum length of 1000 characters.");
+
   try {
     const conversation_id = [sender_id, receiver_id].sort().join("-");
-
     const stmt = db.prepare(`
       INSERT INTO messages (sender_id, receiver_id, message, traveling_date, conversation_id)
       VALUES (?, ?, ?, ?, ?)
@@ -36,16 +42,16 @@ export const writeMessage = ({
       conversation_id
     );
   } catch (error) {
-    console.error("Error writing message:", error);
+    throw new Error("Failed to write message.");
   }
 };
+
 export const getConversation = (
   sender_id: string,
   receiver_id: string
 ): any[] => {
   try {
     const conversation_id = [sender_id, receiver_id].sort().join("-");
-
     const stmt = db.prepare(`
       SELECT * FROM messages
       WHERE conversation_id = ?
@@ -56,14 +62,12 @@ export const getConversation = (
 
     return stmt.all(conversation_id);
   } catch (error) {
-    console.error(
-      `Error getting conversation for ${sender_id} and ${receiver_id}:`,
-      error
-    );
-    return []; // Retourne un tableau vide en cas d'erreur
+    throw new Error("Failed to get conversation.");
   }
 };
+
 export const getUserConversations = (userId: string): any[] => {
+  if (!userId) throw new Error("User ID is required.");
   try {
     const stmt = db.prepare(`
       SELECT conversation_id, MAX(date) AS last_message_date, message
@@ -75,7 +79,6 @@ export const getUserConversations = (userId: string): any[] => {
 
     return stmt.all(userId, userId);
   } catch (error) {
-    console.error(`Error getting conversations for user ${userId}:`, error);
-    return []; // Retourne un tableau vide en cas d'erreur
+    throw new Error("Failed to get user conversations.");
   }
 };
