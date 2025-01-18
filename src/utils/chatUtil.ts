@@ -1,76 +1,59 @@
-import fs from "fs";
-import path from "path";
-import { Message } from "../types";
+import db from "../db";
 
-export const CHAT_DB = path.join(__dirname, "./../../db/cpx_chat.json");
-export const readMessages = (): Message[] => {
-  const data = fs.readFileSync(CHAT_DB, "utf-8");
-  return JSON.parse(data);
+export const readMessages = (): any[] => {
+  const stmt = db.prepare("SELECT * FROM messages ORDER BY date DESC");
+  return stmt.all();
 };
-export const writeMessages = (messages: Message[]): void => {
-  fs.writeFileSync(CHAT_DB, JSON.stringify(messages, null, 2));
+export const writeMessage = ({
+  sender_id,
+  receiver_id,
+  message,
+  traveling_date,
+}: {
+  sender_id: string;
+  receiver_id: string;
+  message: string;
+  traveling_date?: string;
+}): void => {
+  const conversation_id = [sender_id, receiver_id].sort().join("-");
+
+  const stmt = db.prepare(`
+    INSERT INTO messages (sender_id, receiver_id, message, traveling_date, conversation_id)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    sender_id,
+    receiver_id,
+    message,
+    traveling_date || null,
+    conversation_id
+  );
 };
 export const getConversation = (
   sender_id: string,
   receiver_id: string
-): Message[] => {
-  const messages = readMessages();
-  return messages
-    .filter(
-      (msg) =>
-        (msg.sender_id === sender_id && msg.receiver_id === receiver_id) ||
-        (msg.sender_id === receiver_id && msg.receiver_id === sender_id)
-    )
-    .slice(-50); // Limit to last 50 messages
+): any[] => {
+  const conversation_id = [sender_id, receiver_id].sort().join("-");
+
+  const stmt = db.prepare(`
+    SELECT * FROM messages
+    WHERE conversation_id = ?
+      AND (traveling_date IS NULL OR datetime(traveling_date, '+12 hours') > datetime('now'))
+    ORDER BY date DESC
+    LIMIT 100
+  `);
+
+  return stmt.all(conversation_id);
 };
-export const storeMessage = (message: Message): void => {
-  let messages = readMessages();
-  messages.push(message);
+export const getUserConversations = (userId: string): any[] => {
+  const stmt = db.prepare(`
+    SELECT conversation_id, MAX(date) AS last_message_date, message
+    FROM messages
+    WHERE sender_id = ? OR receiver_id = ?
+    GROUP BY conversation_id
+    ORDER BY last_message_date DESC
+  `);
 
-  // Keep the last 50 messages between sender and receiver
-  const filteredMessages = messages.filter(
-    (msg) =>
-      (msg.sender_id === message.sender_id &&
-        msg.receiver_id === message.receiver_id) ||
-      (msg.sender_id === message.receiver_id &&
-        msg.receiver_id === message.sender_id)
-  );
-
-  if (filteredMessages.length > 50) {
-    messages = messages.filter(
-      (msg) =>
-        !filteredMessages.includes(msg) ||
-        filteredMessages.indexOf(msg) >= filteredMessages.length - 50
-    );
-  }
-
-  writeMessages(messages);
-};
-export const getUserConversations = (userId: string): Message[] => {
-  const messages = readMessages();
-  const userMessages = messages.filter(
-    (msg) => msg.sender_id === userId || msg.receiver_id === userId
-  );
-
-  const currentDate = new Date();
-  const sixHoursLater = new Date(currentDate.getTime() + 6 * 60 * 60 * 1000); // Current time + 6 hours
-
-  const uniqueConversations = new Map<string, Message>();
-
-  userMessages.forEach((msg) => {
-    const otherUserId =
-      msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
-
-    // Parse message date or traveling_date if available
-    const messageDate = msg.traveling_date
-      ? new Date(msg.traveling_date)
-      : new Date(msg.date);
-
-    // Filter messages where the date or traveling_date is before current time + 6 hours
-    if (messageDate <= sixHoursLater) {
-      uniqueConversations.set(otherUserId, msg);
-    }
-  });
-
-  return Array.from(uniqueConversations.values());
+  return stmt.all(userId, userId);
 };
