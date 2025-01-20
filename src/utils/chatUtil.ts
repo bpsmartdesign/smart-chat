@@ -89,7 +89,6 @@ export const getConversation = (
       SELECT * FROM messages
       WHERE conversation_id = ?
         AND (traveling_date IS NULL OR datetime(traveling_date, '+12 hours') > datetime('now'))
-      ORDER BY date DESC
       LIMIT 100
     `);
 
@@ -113,7 +112,7 @@ export const getUserConversations = (userId: string): any[] => {
   if (!userId) throw new Error("User ID is required.");
   try {
     const stmt = db.prepare(`
-      SELECT conversation_id, MAX(date) AS last_message_date, message
+      SELECT sender_id, receiver_id, MAX(date) AS last_message_date, message
       FROM messages
       WHERE sender_id = ? OR receiver_id = ?
       GROUP BY conversation_id
