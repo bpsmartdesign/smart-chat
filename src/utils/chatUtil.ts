@@ -110,12 +110,21 @@ export const getConversation = (
  */
 export const getUserConversations = (userId: string): any[] => {
   if (!userId) throw new Error("User ID is required.");
+
   try {
     const stmt = db.prepare(`
-      SELECT sender_id, receiver_id, MAX(date) AS last_message_date, message
-      FROM messages
-      WHERE sender_id = ? OR receiver_id = ?
-      GROUP BY conversation_id
+      SELECT m1.conversation_id, 
+             m1.sender_id, 
+             m1.receiver_id, 
+             m1.date AS last_message_date, 
+             m1.message
+      FROM messages m1
+      WHERE (m1.sender_id = ? OR m1.receiver_id = ?)
+        AND m1.date = (
+          SELECT MAX(m2.date) 
+          FROM messages m2 
+          WHERE m2.conversation_id = m1.conversation_id
+        )
       ORDER BY last_message_date DESC
     `);
 
