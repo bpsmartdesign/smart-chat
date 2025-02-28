@@ -34,11 +34,13 @@ export const readMessages = (): any[] => {
 export const writeMessage = ({
   sender_id,
   receiver_id,
+  journey_id,
   message,
   traveling_date,
 }: {
   sender_id: string;
   receiver_id: string;
+  journey_id: string;
   message: string;
   traveling_date?: string;
 }): void => {
@@ -46,19 +48,21 @@ export const writeMessage = ({
     throw new Error("Sender or receiver ID is missing.");
   if (sender_id === receiver_id)
     throw new Error("Sender and receiver cannot be the same.");
+  if (!journey_id) throw new Error("The journey is required.");
   if (message.length > 1000)
     throw new Error("Message exceeds the maximum length of 1000 characters.");
 
   try {
     const conversation_id = [sender_id, receiver_id].sort().join("-");
     const stmt = db.prepare(`
-      INSERT INTO messages (sender_id, receiver_id, message, traveling_date, conversation_id)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO messages (sender_id, receiver_id, journey_id, message, traveling_date, conversation_id)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
       sender_id,
       receiver_id,
+      journey_id,
       message,
       traveling_date || null,
       conversation_id
@@ -118,10 +122,11 @@ export const getUserConversations = (userId: string): any[] => {
              m1.receiver_id, 
              m1.date AS last_message_date, 
              m1.message
+             m1.traveling_date, 
       FROM messages m1
       WHERE (m1.sender_id = ? OR m1.receiver_id = ?)
-        AND m1.date = (
-          SELECT MAX(m2.date) 
+        AND m1.traveling_date = (
+          SELECT MAX(m2.traveling_date) 
           FROM messages m2 
           WHERE m2.conversation_id = m1.conversation_id
         )

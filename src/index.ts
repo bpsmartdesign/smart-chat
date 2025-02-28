@@ -58,7 +58,7 @@ io.on("connection", (socket) => {
    */
   socket.on(
     "send_message",
-    ({ sender_id, receiver_id, message, traveling_date }) => {
+    ({ sender_id, receiver_id, journey_id, message, traveling_date }) => {
       try {
         if (!sender_id || !receiver_id || !message) {
           throw new Error("Invalid data provided.");
@@ -68,6 +68,7 @@ io.on("connection", (socket) => {
         const newMessage = {
           sender_id,
           receiver_id,
+          journey_id,
           message,
           traveling_date,
         };

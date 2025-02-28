@@ -10,6 +10,7 @@ const initDB = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sender_id TEXT NOT NULL,
       receiver_id TEXT NOT NULL,
+      journey_id TEXT NOT NULL,
       message TEXT NOT NULL,
       date DATETIME DEFAULT CURRENT_TIMESTAMP,
       traveling_date DATETIME,
