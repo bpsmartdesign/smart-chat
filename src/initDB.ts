@@ -4,7 +4,6 @@ const initDB = () => {
   console.log("Initializing database...");
 
   try {
-    // Enable database features
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
 
@@ -21,21 +20,18 @@ const initDB = () => {
         read BOOLEAN DEFAULT 0,
         delivered BOOLEAN DEFAULT 0
       )
-    `); // Main messages table
+    `);
     db.exec(`
       CREATE TABLE IF NOT EXISTS conversations_metadata (
         conversation_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
         unread_count INTEGER DEFAULT 0,
         last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (conversation_id, user_id),
-        FOREIGN KEY (conversation_id) REFERENCES messages(conversation_id) ON DELETE CASCADE
+        PRIMARY KEY (conversation_id, user_id)
       )
-    `); // Conversations metadata table
+    `);
 
-    // Create indexes for all tables
     db.exec(`
-      -- Messages table indexes
       CREATE INDEX IF NOT EXISTS idx_conversation ON messages (conversation_id);
       CREATE INDEX IF NOT EXISTS idx_message_date ON messages (date DESC);
       CREATE INDEX IF NOT EXISTS idx_user_conversations ON messages (sender_id, receiver_id);
@@ -43,13 +39,11 @@ const initDB = () => {
       CREATE INDEX IF NOT EXISTS idx_journey_messages ON messages (journey_id);
       CREATE INDEX IF NOT EXISTS idx_message_delivery ON messages (delivered, read);
       
-      -- Conversations metadata indexes
       CREATE INDEX IF NOT EXISTS idx_metadata_user ON conversations_metadata (user_id);
       CREATE INDEX IF NOT EXISTS idx_metadata_conversation ON conversations_metadata (conversation_id);
       CREATE INDEX IF NOT EXISTS idx_metadata_unread ON conversations_metadata (unread_count DESC);
     `);
 
-    // Migration: Add columns to messages table if they don't exist
     const messagesColumns = db.pragma("table_info(messages)") as unknown as any;
     const hasReadColumn = messagesColumns.some(
       (col: any) => col.name === "read"
@@ -68,20 +62,16 @@ const initDB = () => {
       console.log("Added 'delivered' column to messages table");
     }
 
-    // Migration: Create trigger for conversation metadata
     db.exec(`
       CREATE TRIGGER IF NOT EXISTS update_conversation_metadata
       AFTER INSERT ON messages
       BEGIN
-        -- Update sender's metadata
         INSERT OR IGNORE INTO conversations_metadata (conversation_id, user_id, unread_count)
         VALUES (NEW.conversation_id, NEW.sender_id, 0);
         
-        -- Update receiver's metadata
         INSERT OR IGNORE INTO conversations_metadata (conversation_id, user_id, unread_count)
         VALUES (NEW.conversation_id, NEW.receiver_id, 0);
         
-        -- Increment unread count for receiver
         UPDATE conversations_metadata
         SET unread_count = unread_count + 1,
             last_updated = CURRENT_TIMESTAMP
@@ -89,13 +79,11 @@ const initDB = () => {
           AND user_id = NEW.receiver_id;
       END;
     `);
-    // Migration: Create trigger for message read status updates
     db.exec(`
       CREATE TRIGGER IF NOT EXISTS update_read_status
       AFTER UPDATE OF read ON messages
       WHEN NEW.read = 1 AND OLD.read = 0
       BEGIN
-        -- Decrement unread count when message is marked as read
         UPDATE conversations_metadata
         SET unread_count = unread_count - 1,
             last_updated = CURRENT_TIMESTAMP
@@ -104,7 +92,6 @@ const initDB = () => {
       END;
     `);
 
-    // Create view for active conversations
     db.exec(`
       CREATE VIEW IF NOT EXISTS active_conversations AS
       SELECT 
@@ -116,9 +103,7 @@ const initDB = () => {
       GROUP BY conversation_id;
     `);
 
-    console.log(
-      "Database initialized successfully with all tables and indexes!"
-    );
+    console.log("Database initialized successfully!");
   } catch (error: any) {
     console.error("Database initialization failed:", error.message);
     throw error;
