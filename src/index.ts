@@ -25,12 +25,20 @@ const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
-    origin: "*", // Allow all origins (adjust in production)
+    origin: "*",
     methods: ["GET", "POST"],
+    credentials: true,
   },
-  transports: ["websocket", "polling"], // Enable both
-  allowEIO3: true, // For backwards compatibility
+  transports: ["websocket", "polling"],
+  allowEIO3: true,
+
+  // v4-compatible settings:
+  connectTimeout: 30000,
+  pingTimeout: 5000,
+  pingInterval: 10000,
 });
+
+app.set("trust proxy", 1);
 
 const userSockets: Record<string, string> = {};
 const userPresence: Record<string, boolean> = {};
