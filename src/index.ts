@@ -1,7 +1,6 @@
 import express from "express";
 import { createServer } from "http";
 import { Server as SocketIOServer, Socket } from "socket.io";
-
 import {
   writeMessage,
   getConversation,
@@ -13,6 +12,16 @@ import {
   readMessages,
 } from "./utils/chatUtil";
 
+interface CustomSocket extends Socket {
+  user_id?: string;
+}
+
+interface TypingStatus {
+  user_id: string;
+  is_typing: boolean;
+  timestamp: number;
+}
+
 const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
@@ -22,141 +31,90 @@ const io = new SocketIOServer(server, {
   },
 });
 
-// Track authenticated users
 const userSockets: Record<string, string> = {};
 const userPresence: Record<string, boolean> = {};
+const typingStatusMap = new Map<string, TypingStatus>();
 
-// Middleware to handle authentication
-io.use((socket: Socket & { user_id?: string }, next) => {
+io.use((socket: CustomSocket, next) => {
   const user_id = socket.handshake.auth.user_id;
   if (!user_id) return next(new Error("Authentication error"));
 
-  // Associate user ID with socket
   socket.user_id = user_id;
   userSockets[user_id] = socket.id;
   userPresence[user_id] = true;
   next();
 });
 
-io.on("connection", (socket: Socket & { user_id?: string }) => {
+const handleTypingStatus = (socket: CustomSocket, conversation_id: string) => {
+  const status = typingStatusMap.get(conversation_id);
+  if (status && status.user_id !== socket.user_id) {
+    socket.emit("user_typing", {
+      user_id: status.user_id,
+      is_typing: status.is_typing,
+      conversation_id,
+    });
+  }
+};
+
+io.on("connection", (socket: CustomSocket) => {
   if (!socket.user_id) return socket.disconnect(true);
   const user_id = socket.user_id;
 
-  console.log(`User connected: ${user_id}`);
   socket.join(`user_${user_id}`);
 
-  // Notify user of pending messages on connect
   socket.on("initialize", async () => {
     try {
-      // Get all undelivered messages
       const undeliveredMessages = readMessages().filter(
         (msg) => msg.receiver_id === user_id && !msg.delivered
       );
 
-      // Send undelivered messages and mark as delivered
       if (undeliveredMessages.length) {
         socket.emit("offline_messages", undeliveredMessages);
         markMessagesAsDelivered(undeliveredMessages.map((msg) => msg.id));
       }
 
-      // Send total unread count
-      const totalUnread = getUnreadCount(user_id);
-      socket.emit("unread_count_total", totalUnread);
-
-      // Send conversation list
-      const conversations = getUserConversations(user_id);
-      socket.emit("conversation_list", conversations);
-
-      // Broadcast presence
-      io.emit("presence_update", {
-        user_id,
-        online: true,
+      socket.emit("unread_count_total", getUnreadCount(user_id));
+      socket.emit("conversation_list", getUserConversations(user_id));
+      io.emit("presence_update", { user_id, online: true });
+    } catch (error) {
+      socket.emit("error", {
+        message: error instanceof Error ? error.message : String(error),
       });
-    } catch (error: any) {
-      socket.emit("error", { message: error.message });
     }
   });
 
-  // Join conversation room
   socket.on("join_chat", ({ receiver_id }) => {
-    try {
-      if (!receiver_id) throw new Error("Receiver ID missing");
+    if (!receiver_id)
+      return socket.emit("error", { message: "Receiver ID missing" });
 
-      const conversation_id = [user_id, receiver_id].sort().join("-");
-      socket.join(conversation_id);
+    const conversation_id = [user_id, receiver_id].sort().join("-");
+    socket.join(conversation_id);
 
-      // Send conversation history
-      const conversation = getConversation(user_id, receiver_id);
-      socket.emit("chat_history", conversation);
-
-      // Send metadata (unread count, etc)
-      const metadata = getConversationMetadata(conversation_id, user_id);
-      socket.emit("conversation_metadata", metadata);
-
-      // Send typing status if active
-      const typingStatusMap = new Map();
-      const sendTypingStatus = (conversation_id: string, user_id: string) => {
-        const status = typingStatusMap.get(conversation_id);
-        if (status && status.user_id !== user_id) {
-          socket.emit("user_typing", {
-            user_id: status.user_id,
-            is_typing: status.is_typing,
-            conversation_id: conversation_id,
-          });
-        }
-      };
-
-      socket.on("typing", (data) => {
-        const { receiver_id, is_typing, conversation_id } = data;
-        const currentUserId = socket.user_id;
-
-        // Update in-memory status
-        typingStatusMap.set(conversation_id, {
-          user_id: currentUserId,
-          is_typing: is_typing,
-          timestamp: Date.now(),
-        });
-
-        // Broadcast to recipient
-        socket.to(receiver_id).emit("user_typing", {
-          user_id: currentUserId,
-          is_typing: is_typing,
-          conversation_id: conversation_id,
-        });
-
-        // Auto-clear typing status after 3 seconds
-        if (is_typing) {
-          setTimeout(() => {
-            const currentStatus = typingStatusMap.get(conversation_id);
-            if (currentStatus && currentStatus.user_id === currentUserId) {
-              typingStatusMap.delete(conversation_id);
-            }
-          }, 3000);
-        }
-      });
-    } catch (error: any) {
-      socket.emit("error", { message: error.message });
-    }
+    socket.emit("chat_history", getConversation(user_id, receiver_id));
+    socket.emit(
+      "conversation_metadata",
+      getConversationMetadata(conversation_id, user_id)
+    );
+    handleTypingStatus(socket, conversation_id);
   });
 
-  // Get user conversations
   socket.on("get_conversations", () => {
     try {
-      const conversations = getUserConversations(user_id);
-      socket.emit("conversation_list", conversations);
-    } catch (error: any) {
-      socket.emit("error", { message: error.message });
+      socket.emit("conversation_list", getUserConversations(user_id));
+    } catch (error) {
+      socket.emit("error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 
-  // Send message
   socket.on(
     "send_message",
-    async ({ receiver_id, journey_id, message, traveling_date }) => {
-      try {
-        if (!receiver_id || !message) throw new Error("Invalid data");
+    ({ receiver_id, journey_id, message, traveling_date }) => {
+      if (!receiver_id || !message)
+        return socket.emit("error", { message: "Invalid data" });
 
-        // Write to database
+      try {
         const newMessage = writeMessage({
           sender_id: user_id,
           receiver_id,
@@ -166,136 +124,105 @@ io.on("connection", (socket: Socket & { user_id?: string }) => {
         });
 
         const conversation_id = [user_id, receiver_id].sort().join("-");
-
-        // Emit to conversation room
         io.to(conversation_id).emit("receive_message", newMessage);
 
-        // Update conversation lists for both participants
-        const senderConvos = getUserConversations(user_id);
-        const receiverConvos = getUserConversations(receiver_id);
+        io.to(`user_${user_id}`).emit(
+          "conversation_list",
+          getUserConversations(user_id)
+        );
+        io.to(`user_${receiver_id}`).emit(
+          "conversation_list",
+          getUserConversations(receiver_id)
+        );
 
-        io.to(`user_${user_id}`).emit("conversation_list", senderConvos);
-        io.to(`user_${receiver_id}`).emit("conversation_list", receiverConvos);
-
-        // Real-time delivery receipt
         if (userSockets[receiver_id]) {
           markMessagesAsDelivered([newMessage.id]);
           io.to(conversation_id).emit("message_delivered", {
             messageId: newMessage.id,
-            timestamp: new Date(),
           });
         }
-      } catch (error: any) {
-        socket.emit("error", { message: error.message });
+      } catch (error) {
+        socket.emit("error", {
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   );
 
-  // Typing indicator
   socket.on("typing", ({ receiver_id, is_typing }) => {
-    try {
-      if (!receiver_id) throw new Error("Receiver ID missing");
-      if (typeof is_typing !== "boolean")
-        throw new Error("Invalid typing status");
+    if (!receiver_id || typeof is_typing !== "boolean") {
+      return socket.emit("error", { message: "Invalid typing data" });
+    }
 
-      const conversation_id = [user_id, receiver_id].sort().join("-");
-      const typingStatus = new Map();
+    const conversation_id = [user_id, receiver_id].sort().join("-");
+    typingStatusMap.set(conversation_id, {
+      user_id,
+      is_typing,
+      timestamp: Date.now(),
+    });
 
-      // Update in-memory status
-      typingStatus.set(conversation_id, {
-        user_id,
-        is_typing,
-        timestamp: Date.now(),
-      });
+    socket.to(conversation_id).emit("user_typing", {
+      user_id,
+      is_typing,
+      conversation_id,
+    });
 
-      // Broadcast to conversation room
-      socket.to(conversation_id).emit("user_typing", {
-        user_id,
-        is_typing,
-        conversation_id, // Include conversation_id for client-side filtering
-      });
-
-      // Auto-clear typing status after 3 seconds
-      if (is_typing) {
-        setTimeout(() => {
-          const currentStatus = typingStatus.get(conversation_id);
-          if (currentStatus && currentStatus.user_id === user_id) {
-            typingStatus.delete(conversation_id);
-            socket.to(conversation_id).emit("user_typing", {
-              user_id,
-              is_typing: false,
-              conversation_id,
-            });
-          }
-        }, 3000);
-      }
-    } catch (error: any) {
-      console.error("Typing indicator error:", error);
-      socket.emit("error", { message: error.message });
+    if (is_typing) {
+      setTimeout(() => {
+        const currentStatus = typingStatusMap.get(conversation_id);
+        if (currentStatus?.user_id === user_id) {
+          typingStatusMap.delete(conversation_id);
+          socket.to(conversation_id).emit("user_typing", {
+            user_id,
+            is_typing: false,
+            conversation_id,
+          });
+        }
+      }, 3000);
     }
   });
 
-  // Mark messages as read
   socket.on("mark_read", ({ messageIds, receiver_id }) => {
-    try {
-      if (!messageIds.length) return;
+    if (!messageIds?.length) return;
 
+    try {
       markMessagesAsRead(messageIds, user_id);
       const conversation_id = [user_id, receiver_id].sort().join("-");
-
-      // Notify sender
-      io.to(conversation_id).emit("messages_read", {
-        messageIds,
-        reader_id: user_id,
+      io.to(conversation_id).emit("messages_read", { messageIds });
+      socket.emit(
+        "conversation_metadata",
+        getConversationMetadata(conversation_id, user_id)
+      );
+    } catch (error) {
+      socket.emit("error", {
+        message: error instanceof Error ? error.message : String(error),
       });
-
-      // Update metadata
-      const metadata = getConversationMetadata(conversation_id, user_id);
-      socket.emit("conversation_metadata", metadata);
-    } catch (error: any) {
-      socket.emit("error", { message: error.message });
     }
   });
 
-  // Get unread counts
   socket.on("get_unread_counts", () => {
     try {
-      // Total unread count
-      const totalUnread = getUnreadCount(user_id);
-      socket.emit("unread_count_total", totalUnread);
-
-      // Unread counts per conversation
-      const conversations = getUserConversations(user_id);
-      conversations.forEach((convo) => {
-        const conversationUnread = getUnreadCount(
-          user_id,
-          convo.conversation_id
-        );
+      socket.emit("unread_count_total", getUnreadCount(user_id));
+      getUserConversations(user_id).forEach((convo) => {
         socket.emit("conversation_unread_count", {
           conversation_id: convo.conversation_id,
-          count: conversationUnread,
+          count: getUnreadCount(user_id, convo.conversation_id),
         });
       });
-    } catch (error: any) {
-      socket.emit("error", { message: error.message });
+    } catch (error) {
+      socket.emit("error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 
-  // Handle disconnect
   socket.on("disconnect", () => {
-    console.log(`User disconnected: ${user_id}`);
     userPresence[user_id] = false;
     delete userSockets[user_id];
-
-    // Broadcast presence
-    io.emit("presence_update", {
-      user_id,
-      online: false,
-    });
+    io.emit("presence_update", { user_id, online: false });
   });
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
