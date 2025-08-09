@@ -9,8 +9,6 @@ import {
   markMessagesAsDelivered,
   markMessagesAsRead,
   getUnreadCount,
-  setTypingStatus,
-  getTypingStatus,
   getConversationMetadata,
   readMessages,
 } from "./utils/chatUtil";
@@ -96,13 +94,44 @@ io.on("connection", (socket: Socket & { user_id?: string }) => {
       socket.emit("conversation_metadata", metadata);
 
       // Send typing status if active
-      const typingStatus = getTypingStatus(conversation_id);
-      typingStatus.forEach((status) => {
-        if (status.user_id !== user_id) {
+      const typingStatusMap = new Map();
+      const sendTypingStatus = (conversation_id: string, user_id: string) => {
+        const status = typingStatusMap.get(conversation_id);
+        if (status && status.user_id !== user_id) {
           socket.emit("user_typing", {
             user_id: status.user_id,
             is_typing: status.is_typing,
+            conversation_id: conversation_id,
           });
+        }
+      };
+
+      socket.on("typing", (data) => {
+        const { receiver_id, is_typing, conversation_id } = data;
+        const currentUserId = socket.user_id;
+
+        // Update in-memory status
+        typingStatusMap.set(conversation_id, {
+          user_id: currentUserId,
+          is_typing: is_typing,
+          timestamp: Date.now(),
+        });
+
+        // Broadcast to recipient
+        socket.to(receiver_id).emit("user_typing", {
+          user_id: currentUserId,
+          is_typing: is_typing,
+          conversation_id: conversation_id,
+        });
+
+        // Auto-clear typing status after 3 seconds
+        if (is_typing) {
+          setTimeout(() => {
+            const currentStatus = typingStatusMap.get(conversation_id);
+            if (currentStatus && currentStatus.user_id === currentUserId) {
+              typingStatusMap.delete(conversation_id);
+            }
+          }, 3000);
         }
       });
     } catch (error: any) {
@@ -166,15 +195,42 @@ io.on("connection", (socket: Socket & { user_id?: string }) => {
   socket.on("typing", ({ receiver_id, is_typing }) => {
     try {
       if (!receiver_id) throw new Error("Receiver ID missing");
+      if (typeof is_typing !== "boolean")
+        throw new Error("Invalid typing status");
 
       const conversation_id = [user_id, receiver_id].sort().join("-");
-      setTypingStatus(conversation_id, user_id, is_typing);
+      const typingStatus = new Map();
 
+      // Update in-memory status
+      typingStatus.set(conversation_id, {
+        user_id,
+        is_typing,
+        timestamp: Date.now(),
+      });
+
+      // Broadcast to conversation room
       socket.to(conversation_id).emit("user_typing", {
         user_id,
         is_typing,
+        conversation_id, // Include conversation_id for client-side filtering
       });
+
+      // Auto-clear typing status after 3 seconds
+      if (is_typing) {
+        setTimeout(() => {
+          const currentStatus = typingStatus.get(conversation_id);
+          if (currentStatus && currentStatus.user_id === user_id) {
+            typingStatus.delete(conversation_id);
+            socket.to(conversation_id).emit("user_typing", {
+              user_id,
+              is_typing: false,
+              conversation_id,
+            });
+          }
+        }, 3000);
+      }
     } catch (error: any) {
+      console.error("Typing indicator error:", error);
       socket.emit("error", { message: error.message });
     }
   });
