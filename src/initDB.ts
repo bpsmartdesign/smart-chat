@@ -126,7 +126,7 @@ const initDB = () => {
         conversation_id,
         MAX(date) AS last_message_date,
         COUNT(*) AS message_count,
-        SUM(CASE WHEN read = 0 AND receiver_id = ? THEN 1 ELSE 0 END) AS unread_count
+        SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) AS total_unread_count
       FROM messages
       GROUP BY conversation_id;
     `);
