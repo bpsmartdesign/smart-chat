@@ -32,16 +32,6 @@ const initDB = () => {
         FOREIGN KEY (conversation_id) REFERENCES messages(conversation_id) ON DELETE CASCADE
       )
     `); // Conversations metadata table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS typing_indicators (
-        conversation_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        is_typing BOOLEAN DEFAULT 0,
-        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (conversation_id, user_id),
-        FOREIGN KEY (conversation_id) REFERENCES messages(conversation_id) ON DELETE CASCADE
-      )
-    `); // Typing indicators table
 
     // Create indexes for all tables
     db.exec(`
@@ -57,11 +47,6 @@ const initDB = () => {
       CREATE INDEX IF NOT EXISTS idx_metadata_user ON conversations_metadata (user_id);
       CREATE INDEX IF NOT EXISTS idx_metadata_conversation ON conversations_metadata (conversation_id);
       CREATE INDEX IF NOT EXISTS idx_metadata_unread ON conversations_metadata (unread_count DESC);
-      
-      -- Typing indicators indexes
-      CREATE INDEX IF NOT EXISTS idx_typing_conversation ON typing_indicators (conversation_id);
-      CREATE INDEX IF NOT EXISTS idx_typing_updated ON typing_indicators (last_updated DESC);
-      CREATE INDEX IF NOT EXISTS idx_typing_status ON typing_indicators (is_typing);
     `);
 
     // Migration: Add columns to messages table if they don't exist
