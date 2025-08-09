@@ -31,7 +31,7 @@ const io = new SocketIOServer(server, {
   transports: ["websocket", "polling"],
 });
 
-app.set("trust proxy", 1);
+app.set("trust proxy", true);
 
 const userSockets: Record<string, string> = {};
 const userPresence: Record<string, boolean> = {};
