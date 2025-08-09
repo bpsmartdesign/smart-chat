@@ -23,13 +23,7 @@ interface TypingStatus {
 
 const app = express();
 const server = createServer(app);
-const io = new SocketIOServer(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-  transports: ["websocket", "polling"],
-});
+const io = new SocketIOServer(server);
 
 app.set("trust proxy", true);
 
