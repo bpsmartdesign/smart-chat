@@ -27,15 +27,8 @@ const io = new SocketIOServer(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
-    credentials: true,
   },
   transports: ["websocket", "polling"],
-  allowEIO3: true,
-
-  // v4-compatible settings:
-  connectTimeout: 30000,
-  pingTimeout: 5000,
-  pingInterval: 10000,
 });
 
 app.set("trust proxy", 1);
