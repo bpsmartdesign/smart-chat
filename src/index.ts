@@ -15,7 +15,6 @@ import {
 interface CustomSocket extends Socket {
   user_id?: string;
 }
-
 interface TypingStatus {
   user_id: string;
   is_typing: boolean;
@@ -73,6 +72,7 @@ io.on("connection", (socket: CustomSocket) => {
         markMessagesAsDelivered(undeliveredMessages.map((msg) => msg.id));
       }
 
+      socket.emit("all_messages", readMessages());
       socket.emit("unread_count_total", getUnreadCount(user_id));
       socket.emit("conversation_list", getUserConversations(user_id));
       io.emit("presence_update", { user_id, online: true });
@@ -82,7 +82,6 @@ io.on("connection", (socket: CustomSocket) => {
       });
     }
   });
-
   socket.on("join_chat", ({ receiver_id }) => {
     if (!receiver_id)
       return socket.emit("error", { message: "Receiver ID missing" });
@@ -97,7 +96,6 @@ io.on("connection", (socket: CustomSocket) => {
     );
     handleTypingStatus(socket, conversation_id);
   });
-
   socket.on("get_conversations", () => {
     try {
       socket.emit("conversation_list", getUserConversations(user_id));
@@ -107,7 +105,6 @@ io.on("connection", (socket: CustomSocket) => {
       });
     }
   });
-
   socket.on(
     "send_message",
     ({ receiver_id, journey_id, message, traveling_date }) => {
@@ -148,7 +145,6 @@ io.on("connection", (socket: CustomSocket) => {
       }
     }
   );
-
   socket.on("typing", ({ receiver_id, is_typing }) => {
     if (!receiver_id || typeof is_typing !== "boolean") {
       return socket.emit("error", { message: "Invalid typing data" });
@@ -181,7 +177,6 @@ io.on("connection", (socket: CustomSocket) => {
       }, 3000);
     }
   });
-
   socket.on("mark_read", ({ messageIds, receiver_id }) => {
     if (!messageIds?.length) return;
 
@@ -199,7 +194,6 @@ io.on("connection", (socket: CustomSocket) => {
       });
     }
   });
-
   socket.on("get_unread_counts", () => {
     try {
       socket.emit("unread_count_total", getUnreadCount(user_id));
@@ -215,7 +209,6 @@ io.on("connection", (socket: CustomSocket) => {
       });
     }
   });
-
   socket.on("disconnect", () => {
     userPresence[user_id] = false;
     delete userSockets[user_id];
