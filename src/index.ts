@@ -27,6 +27,7 @@ const io = new SocketIOServer(server, {
 
 // Track authenticated users
 const userSockets: Record<string, string> = {};
+const userPresence: Record<string, boolean> = {};
 
 // Middleware to handle authentication
 io.use((socket: Socket & { user_id?: string }, next) => {
@@ -36,6 +37,7 @@ io.use((socket: Socket & { user_id?: string }, next) => {
   // Associate user ID with socket
   socket.user_id = user_id;
   userSockets[user_id] = socket.id;
+  userPresence[user_id] = true;
   next();
 });
 
@@ -49,21 +51,30 @@ io.on("connection", (socket: Socket & { user_id?: string }) => {
   // Notify user of pending messages on connect
   socket.on("initialize", async () => {
     try {
-      // Send undelivered messages
-      const undeliveredStmt = db.prepare(`
-        SELECT * FROM messages 
-        WHERE receiver_id = ? AND delivered = 0
-      `);
-      const messages = undeliveredStmt.all(user_id);
+      // Get all undelivered messages
+      const undeliveredMessages = readMessages().filter(
+        (msg) => msg.receiver_id === user_id && !msg.delivered
+      );
 
-      messages.forEach((msg: any) => {
-        socket.emit("receive_message", msg);
-        markMessagesAsDelivered([msg.id]);
+      // Send undelivered messages and mark as delivered
+      if (undeliveredMessages.length) {
+        socket.emit("offline_messages", undeliveredMessages);
+        markMessagesAsDelivered(undeliveredMessages.map((msg) => msg.id));
+      }
+
+      // Send total unread count
+      const totalUnread = getUnreadCount(user_id);
+      socket.emit("unread_count_total", totalUnread);
+
+      // Send conversation list
+      const conversations = getUserConversations(user_id);
+      socket.emit("conversation_list", conversations);
+
+      // Broadcast presence
+      io.emit("presence_update", {
+        user_id,
+        online: true,
       });
-
-      // Send initial unread counts
-      const convos = getUserConversations(user_id);
-      socket.emit("conversation_list", convos);
     } catch (error: any) {
       socket.emit("error", { message: error.message });
     }
@@ -191,10 +202,41 @@ io.on("connection", (socket: Socket & { user_id?: string }) => {
     }
   });
 
+  // Get unread counts
+  socket.on("get_unread_counts", () => {
+    try {
+      // Total unread count
+      const totalUnread = getUnreadCount(user_id);
+      socket.emit("unread_count_total", totalUnread);
+
+      // Unread counts per conversation
+      const conversations = getUserConversations(user_id);
+      conversations.forEach((convo) => {
+        const conversationUnread = getUnreadCount(
+          user_id,
+          convo.conversation_id
+        );
+        socket.emit("conversation_unread_count", {
+          conversation_id: convo.conversation_id,
+          count: conversationUnread,
+        });
+      });
+    } catch (error: any) {
+      socket.emit("error", { message: error.message });
+    }
+  });
+
   // Handle disconnect
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${user_id}`);
+    userPresence[user_id] = false;
     delete userSockets[user_id];
+
+    // Broadcast presence
+    io.emit("presence_update", {
+      user_id,
+      online: false,
+    });
   });
 });
 
