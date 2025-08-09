@@ -25,15 +25,11 @@ const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
-    origin: "*", // For production, replace with your frontend domain(s)
+    origin: "*", // Allow all origins (adjust in production)
     methods: ["GET", "POST"],
-    credentials: true,
   },
-  transports: ["websocket", "polling"], // Enable both transports
-  allowEIO3: true, // For backward compatibility
-  pingTimeout: 60000, // Increase timeout
-  pingInterval: 25000,
-  cookie: true,
+  transports: ["websocket", "polling"], // Enable both
+  allowEIO3: true, // For backwards compatibility
 });
 
 const userSockets: Record<string, string> = {};
