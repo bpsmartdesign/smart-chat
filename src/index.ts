@@ -14,7 +14,6 @@ import {
   getConversationMetadata,
   readMessages,
 } from "./utils/chatUtil";
-import db from "./db";
 
 const app = express();
 const server = createServer(app);
