@@ -1,5 +1,6 @@
 import express from "express";
-import { createServer } from "http";
+import fs from "fs";
+import https from "https";
 import { Server as SocketIOServer, Socket } from "socket.io";
 import {
   writeMessage,
@@ -21,11 +22,23 @@ interface TypingStatus {
   timestamp: number;
 }
 
-const app = express();
-const server = createServer(app);
-const io = new SocketIOServer(server);
+const sslOptions = {
+  key: fs.readFileSync("./certs/key.pem"),
+  cert: fs.readFileSync("./certs/cert.pem"),
+};
 
+const app = express();
 app.set("trust proxy", true);
+app.get("/", (req, res) => {
+  res.send(
+    "<h2>Socket.IO HTTPS Chat Server</h2><p>If you see a browser warning, accept it for testing purposes.</p>"
+  );
+});
+
+const httpsServer = https.createServer(sslOptions, app);
+const io = new SocketIOServer(httpsServer, {
+  cors: { origin: "*" },
+});
 
 const userSockets: Record<string, string> = {};
 const userPresence: Record<string, boolean> = {};
@@ -214,6 +227,9 @@ io.on("connection", (socket: CustomSocket) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+httpsServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`HTTPS + Socket.IO Chat Server running on port ${PORT}`);
+  console.log(
+    `Visit: https://147.79.75.248:${PORT} in your browser to accept the cert`
+  );
 });
