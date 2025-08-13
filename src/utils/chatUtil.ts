@@ -147,18 +147,13 @@ export const getUserConversations = (userId: string): any[] => {
         FROM messages
         WHERE sender_id = ? OR receiver_id = ?
       )
-      SELECT m.*, 
-             (SELECT COUNT(*) 
-              FROM messages 
-              WHERE conversation_id = m.conversation_id 
-                AND receiver_id = ? 
-                AND read = 0) AS unread_count
+      SELECT m.*
       FROM ranked_messages m
       WHERE rn = 1
       ORDER BY m.date DESC
     `);
 
-    return stmt.all(userId, userId, userId);
+    return stmt.all(userId, userId);
   } catch (error: any) {
     throw new Error(`Failed to get user conversations: ${error.message}`);
   }
